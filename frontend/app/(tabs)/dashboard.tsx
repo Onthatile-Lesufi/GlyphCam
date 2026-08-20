@@ -4,7 +4,7 @@ import { Platform, Pressable, StyleSheet, View, Text, ScrollView } from 'react-n
 import { LevelCard } from '@/components/levelCard';
 
 export default function HomeScreen() {
-  const [ language, setLanguage ] = useState("Spanish");
+  const [ language, setLanguage ] = useState("English");
   const [ languageLevels, setLanguageLevels ] = useState(10);
 
   return (
