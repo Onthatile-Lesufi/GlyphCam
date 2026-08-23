@@ -7,6 +7,7 @@ GlyphCam is an ocr based language learning app
 ### <U>Tech Stack</U>
 #### React Native :
 #### OCR :
+OCR https://ocr.space/ocrapi
 #### Firebase : 
 #### Expo :
 

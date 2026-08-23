@@ -1,21 +1,21 @@
 import { CameraView, useCameraPermissions, CameraFacing } from 'expo-camera';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View, Text, ScrollView, Button } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, Text, ScrollView, Button, Image } from 'react-native';
 import { LevelCard } from '@/components/levelCard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Entypo from '@expo/vector-icons/Entypo';
-import { recognizeText } from '@dariyd/react-native-text-recognition';
+import { router } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
 
 export default function Question() {
-  const [ language, setLanguage ] = useState("English");
-  const [ languageLevels, setLanguageLevels ] = useState(10);
   // 1. Destructure the hook array properly
   const [permission, requestPermission] = useCameraPermissions();
   const [ useFlash, setUseFlash ] = useState(false);
   const [ camOrientation, setCamOrientation ] = useState<CameraFacing>('back');
-  const [ cameraFocus, setCameraFocus ] =  useState(true);
+  const [ cameraFocus, setCameraFocus ] =  useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const { languageLevel } = useLocalSearchParams(); 
 
   // 2. Handle initial loading state
   if (!permission) {
@@ -33,9 +33,52 @@ export default function Question() {
 
   const TakePicture = async () => {
     if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync();
-      console.log('Photo taken:', photo?.uri);
-      setCameraFocus(false);
+      try {
+        // 1. Compress image quality (0.4 keeps file size under the 1 MB limit)
+        const photo = await cameraRef.current.takePictureAsync({ quality: 0.4 });
+        if (!photo?.uri) return;
+
+        // 2. Package as binary FormData (more reliable than base64 in RN)
+        const formData = new FormData();
+        formData.append('file', {
+          uri: photo.uri,
+          name: 'photo.jpg',
+          type: 'image/jpeg',
+        } as any);
+
+        formData.append('language', 'eng');
+        formData.append('scale', 'true'); // Auto-scales for better visibility
+        formData.append('OCREngine', '2'); // Engine 2 handles photo/camera text better than Engine 1
+
+        // 3. Make API call
+        const response = await fetch('https://api.ocr.space/parse/image', {
+          method: 'POST',
+          headers: {
+            apikey: 'helloworld', // Replace with your key from ocr.space/ocrapi
+          },
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        // Debugging check: Check if API returned an error message
+        if (data.IsErroredOnProcessing) {
+          console.error('OCR.space Error:', data.ErrorMessage);
+          return;
+        }
+
+        const text = data?.ParsedResults?.[0]?.ParsedText ?? '';
+
+        if (!text.trim()) {
+          console.log('No text detected. Try holding the camera closer or improving lighting.');
+        } else {
+          console.log('Text Recognised:', text);
+        }
+
+        setCameraFocus(false);
+      } catch (error) {
+        console.error('Fetch Error:', error);
+      }
     }
   };
 
@@ -69,8 +112,8 @@ export default function Question() {
       :
         <>
           <View style={styles.topBar}>
-              <Pressable>
-                  <Text style={styles.heroTitle}>{"<"} {language}</Text>
+              <Pressable onPress={() => router.replace('/(tabs)/dashboard')}>
+                  <Text style={styles.heroTitle}>{"<"}  Level {languageLevel}</Text>
               </Pressable>
               <View style={styles.accountBubble}>
                   <Pressable>
@@ -78,7 +121,15 @@ export default function Question() {
               </View>
           </View>
           <View style={styles.questionContainer}>
-            <View></View>
+            <View>
+              <Text style={styles.questionText}>What is this item?</Text>
+              {/* <Image style={styles.questionImage} source={{uri: 'https://en.wikipedia.org/wiki/File:Image_created_with_a_mobile_phone.png'}}/> */}
+              <Image style={styles.questionImage} source={require('../../assets/images/icon.png')}/>
+            </View>
+            <View>
+              <Text style={styles.questionText}>Answer:</Text>
+              <Text style={styles.questionText}>Pepe</Text>
+            </View>
             <Pressable style={styles.cameraButton} onPress={() => setCameraFocus(true)}>
               <Entypo name="camera" size={50} color="black" />
             </Pressable>
@@ -165,7 +216,9 @@ const styles = StyleSheet.create({
       alignItems: 'center',
     },
     questionContainer : {
-      flex: 1
+      flex: 1,
+      alignItems: 'center',
+      padding: 20
     },
     cameraButton : {
       width: 125,
@@ -174,6 +227,22 @@ const styles = StyleSheet.create({
       borderRadius: 150,
       borderColor: 'black',
       justifyContent: 'center',
-      alignItems: 'center'
+      alignItems: 'center',
+      marginTop: 10,
+      backgroundColor: "#c8d7a2"
+    },
+    questionText : {
+      textAlign: "center",
+      fontSize: 24,
+      fontWeight: '600',
+      marginBottom: 25
+    },
+    questionImage : {
+      width: 300,
+      height: 300,
+      marginBottom: 35,
+      borderRadius: 20,
+      borderWidth: 7,
+      borderColor: 'black'
     }
 });

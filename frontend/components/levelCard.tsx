@@ -9,7 +9,10 @@ type LevelCardProps = {
 export const LevelCard = ({ level }: LevelCardProps) => {
     return (
         <View style={styles.cardContainer}>
-            <Pressable style={styles.cardPressable} onPress={() => router.replace("/(tabs)/question")}>
+            <Pressable style={styles.cardPressable} onPress={() => router.replace({
+                pathname: "/question",
+                params: { languageLevel: level + 1 }
+            })}>
                 <Text style={styles.cardText}>Level {level + 1}</Text>
                 <CircleProgress size={50} strokeWidth={10} key={level} colour="black" progress={10}/>
             </Pressable>

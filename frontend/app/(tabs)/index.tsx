@@ -8,7 +8,7 @@ export default function HomeScreen() {
       <View style={styles.indexBackground}>
         <View style={styles.indexForeground}>
           <Text style={styles.heroTitle}>GlyphCam</Text>
-          <Pressable style={styles.startButton} onPress={() => router.replace('/dashboard')}>
+          <Pressable style={styles.startButton} onPress={() => router.replace('/userAuth')}>
             <Text style={styles.buttonText}>Start</Text>
           </Pressable>
         </View>

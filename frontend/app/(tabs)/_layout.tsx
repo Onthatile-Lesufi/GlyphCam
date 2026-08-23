@@ -48,6 +48,14 @@ export default function TabLayout() {
           tabBarStyle: {display:'none'}
         }}
       />
+      <Tabs.Screen
+        name="userAuth"
+        options={{
+          title: 'UserAuth',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          tabBarStyle: {display:'none'}
+        }}
+      />
     </Tabs>
   );
 }
