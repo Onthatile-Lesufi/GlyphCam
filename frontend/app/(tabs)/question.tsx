@@ -6,6 +6,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import Entypo from '@expo/vector-icons/Entypo';
 import { router } from 'expo-router';
 import { useLocalSearchParams } from 'expo-router';
+import { auth, db, storage } from "../../scripts/firebase";
+import { collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
 
 
 export default function Question() {
@@ -14,6 +16,7 @@ export default function Question() {
   const [ useFlash, setUseFlash ] = useState(false);
   const [ camOrientation, setCamOrientation ] = useState<CameraFacing>('back');
   const [ cameraFocus, setCameraFocus ] =  useState(false);
+  const [ languages, setLanguages ] = useState([]);
   const cameraRef = useRef<CameraView>(null);
   const { languageLevel } = useLocalSearchParams(); 
 
@@ -30,6 +33,19 @@ export default function Question() {
       </View>
     );
   }
+
+  useEffect(() => {
+    const q = query(collection(db, "Language"), orderBy("LanguageName", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      //TODO: finish
+      // setLanguages(list);
+    });
+    return unsubscribe;
+  }, []);
 
   const TakePicture = async () => {
     if (cameraRef.current) {

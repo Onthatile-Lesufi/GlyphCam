@@ -2,10 +2,25 @@ import { CameraView } from 'expo-camera';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View, Text, ScrollView } from 'react-native';
 import { LevelCard } from '@/components/levelCard';
+import { auth, db, storage } from "../../scripts/firebase";
+import { collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
 
 export default function HomeScreen() {
   const [ language, setLanguage ] = useState("English");
   const [ languageLevels, setLanguageLevels ] = useState(10);
+
+  useEffect(() => {
+    const q = query(collection(db, "Language"), orderBy("LanguageName", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      //TODO: finish
+      // setLanguages(list);
+    });
+    return unsubscribe;
+  }, []);
 
   return (
     <View style={styles.indexContainer}>
