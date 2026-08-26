@@ -1,26 +1,53 @@
-import { CameraView, useCameraPermissions, CameraFacing } from 'expo-camera';
-import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View, Text, ScrollView, Button, Image } from 'react-native';
-import { LevelCard } from '@/components/levelCard';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import Entypo from '@expo/vector-icons/Entypo';
-import { router } from 'expo-router';
-import { useLocalSearchParams } from 'expo-router';
+import { useCameraPermissions } from 'expo-camera';
+import { useRef, useState, useEffect, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, Button, Image } from 'react-native';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { auth, db, storage } from "../../scripts/firebase";
-import { collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
-
+import { collection, addDoc, updateDoc, doc, getDocs, onSnapshot, query, orderBy, where } from "firebase/firestore";
+import QuestionCamera from "../../components/questionCamera";
+import QuestionView from "../../components/questionView";
 
 export default function Question() {
-  // 1. Destructure the hook array properly
-  const [permission, requestPermission] = useCameraPermissions();
-  const [ useFlash, setUseFlash ] = useState(false);
-  const [ camOrientation, setCamOrientation ] = useState<CameraFacing>('back');
-  const [ cameraFocus, setCameraFocus ] =  useState(false);
-  const [ languages, setLanguages ] = useState([]);
-  const cameraRef = useRef<CameraView>(null);
+  const [ permission, requestPermission ] = useCameraPermissions();
+  const [ cameraFocus, setCameraFocus ] = useState(false);
+  const [ answerCorrect, setAnswerCorrect ] = useState(false);
+  const [ questions, setQuestions ] = useState<{ id: string, QuestionAnswers: string[] }[]>([]);
+  const [ question, setQuestion ] = useState<{ id: string, QuestionAnswers: string[] } | null>(null);
   const { languageLevel } = useLocalSearchParams(); 
+  const [ result, setResult ] = useState<string | null>(null);
 
-  // 2. Handle initial loading state
+  const NewQuestion = () => {
+    setResult(null);
+    setCameraFocus(false);
+    if (questions.length > 0) {
+      const randomIndex = Math.floor(Math.random() * questions.length);
+      setQuestion(questions[randomIndex]);
+    }
+  };
+
+  const LoadQuestions = () => {
+    const _level = Number.parseInt(Array.isArray(languageLevel) ? languageLevel[0] : languageLevel);
+    const q = query(collection(db, "LanguageQuestion"), where("QuestionLevel", "==", _level), orderBy("QuestionLevel", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as { id: string, QuestionAnswers: string[] }[];
+      setQuestions(list);
+    });
+    return unsubscribe;
+  }
+
+  useEffect(() => {
+    return LoadQuestions();
+  }, [languageLevel]);
+
+  useFocusEffect(
+    useCallback(() => {
+      NewQuestion(); 
+    }, [questions])
+  );
+
   if (!permission) {
     return <View style={styles.indexContainer} />;
   }
@@ -34,123 +61,80 @@ export default function Question() {
     );
   }
 
-  useEffect(() => {
-    const q = query(collection(db, "Language"), orderBy("LanguageName", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      //TODO: finish
-      // setLanguages(list);
+  async function OnPictureCapture (image: string) {
+    setCameraFocus(false);
+
+    const formData = new FormData();
+    formData.append('file', {
+      uri: image,
+      name: 'photo.jpg',
+      type: 'image/jpeg',
     });
-    return unsubscribe;
-  }, []);
 
-  const TakePicture = async () => {
-    if (cameraRef.current) {
-      try {
-        // 1. Compress image quality (0.4 keeps file size under the 1 MB limit)
-        const photo = await cameraRef.current.takePictureAsync({ quality: 0.4 });
-        if (!photo?.uri) return;
+    formData.append('language', 'eng');
+    formData.append('scale', 'true');
+    formData.append('OCREngine', '2');
 
-        // 2. Package as binary FormData (more reliable than base64 in RN)
-        const formData = new FormData();
-        formData.append('file', {
-          uri: photo.uri,
-          name: 'photo.jpg',
-          type: 'image/jpeg',
-        } as any);
+    const response = await fetch('https://api.ocr.space/parse/image', {
+      method: 'POST',
+      headers: { apikey: 'helloworld' },
+      body: formData,
+    });
 
-        formData.append('language', 'eng');
-        formData.append('scale', 'true'); // Auto-scales for better visibility
-        formData.append('OCREngine', '2'); // Engine 2 handles photo/camera text better than Engine 1
+    const data = await response.json();
 
-        // 3. Make API call
-        const response = await fetch('https://api.ocr.space/parse/image', {
-          method: 'POST',
-          headers: {
-            apikey: 'helloworld', // Replace with your key from ocr.space/ocrapi
-          },
-          body: formData,
+    if (data.IsErroredOnProcessing) {
+      console.error('OCR.space Error:', data.ErrorMessage);
+      return;
+    }
+    
+    const text = data?.ParsedResults?.[0]?.ParsedText ?? '';
+
+    let _correct = false;
+    question?.QuestionAnswers?.forEach(answer => {
+      if (!_correct) _correct = text.toLowerCase().includes(answer.toLowerCase());
+    });
+
+    setResult(text.trim() ? text : 'No text detected');
+    setAnswerCorrect(_correct);
+
+    if (text.trim() && auth.currentUser?.uid && question?.id) {
+      const qAnswers = query(
+        collection(db, "QuestionAnswers"),
+        where("UserId", "==", auth.currentUser.uid),
+        where("QuestionId", "==", question.id)
+      );
+      
+      const snapshot = await getDocs(qAnswers);
+
+      if (!snapshot.empty) {
+        const _existingDocId = snapshot.docs[0].id;
+        await updateDoc(doc(db, "QuestionAnswers", _existingDocId), {
+          IsCorrect: _correct
         });
-
-        const data = await response.json();
-
-        // Debugging check: Check if API returned an error message
-        if (data.IsErroredOnProcessing) {
-          console.error('OCR.space Error:', data.ErrorMessage);
-          return;
-        }
-
-        const text = data?.ParsedResults?.[0]?.ParsedText ?? '';
-
-        if (!text.trim()) {
-          console.log('No text detected. Try holding the camera closer or improving lighting.');
-        } else {
-          console.log('Text Recognised:', text);
-        }
-
-        setCameraFocus(false);
-      } catch (error) {
-        console.error('Fetch Error:', error);
+      } else {
+        await addDoc(collection(db, "QuestionAnswers"), {
+          UserId: auth.currentUser.uid,
+          QuestionId: question.id,
+          IsCorrect: _correct
+        });
       }
     }
-  };
+  }
 
   return (
     <View style={styles.indexContainer}>
       {cameraFocus ?
-        <View style={styles.cameraContainer}>
-          <CameraView
-            ref={cameraRef}
-            facing={camOrientation}
-            enableTorch={useFlash}
-            mode="picture"
-            style={StyleSheet.absoluteFillObject}
-          />
-          <View style={styles.cameraButtonContainer}>
-            <Pressable style={styles.cameraFlashButton} onPress={() => setUseFlash(!useFlash)}>
-              {useFlash ?
-                <Ionicons name="flash" size={30} color="black" />
-              :
-                <Ionicons name="flash-outline" size={30} color="black" />
-              }
-            </Pressable>
-            <Pressable style={styles.cameraFlipButton} onPress={() => setCamOrientation(camOrientation === 'back' ? 'front' : 'back')}>
-              <Ionicons name="camera-reverse" size={30} color="black" />
-            </Pressable>
-            <Pressable style={styles.cameraShootButton} onPress={TakePicture}>
-              <Entypo name="camera" size={50} color="black" />
-            </Pressable>
-          </View>
-        </View>
+        <QuestionCamera passThrough={OnPictureCapture}/>
       :
-        <>
-          <View style={styles.topBar}>
-              <Pressable onPress={() => router.replace('/(tabs)/dashboard')}>
-                  <Text style={styles.heroTitle}>{"<"}  Level {languageLevel}</Text>
-              </Pressable>
-              <View style={styles.accountBubble}>
-                  <Pressable>
-                  </Pressable>
-              </View>
-          </View>
-          <View style={styles.questionContainer}>
-            <View>
-              <Text style={styles.questionText}>What is this item?</Text>
-              {/* <Image style={styles.questionImage} source={{uri: 'https://en.wikipedia.org/wiki/File:Image_created_with_a_mobile_phone.png'}}/> */}
-              <Image style={styles.questionImage} source={require('../../assets/images/icon.png')}/>
-            </View>
-            <View>
-              <Text style={styles.questionText}>Answer:</Text>
-              <Text style={styles.questionText}>Pepe</Text>
-            </View>
-            <Pressable style={styles.cameraButton} onPress={() => setCameraFocus(true)}>
-              <Entypo name="camera" size={50} color="black" />
-            </Pressable>
-          </View>
-        </>
+        <QuestionView 
+          languageLevel={languageLevel} 
+          cameraPassThrough={(k:boolean) => setCameraFocus(k)} 
+          question={question} 
+          result={result}
+          onNext={NewQuestion}
+          answerCorrect={answerCorrect}
+        />
       }
     </View>
   );
@@ -160,105 +144,5 @@ const styles = StyleSheet.create({
     indexContainer : {
       flex: 1,
       backgroundColor: '#dee5cf',
-    },
-    topBar : {
-      width: 'auto',
-      height: 140,
-      backgroundColor: '#a5af8c',
-      paddingTop: 42.5,
-      paddingLeft: 40,
-      borderColor: 'black',
-      borderBottomWidth: 9,
-      flexDirection: 'row',
-      alignItems: 'center',           
-      justifyContent: 'space-between',
-      paddingHorizontal: 30,
-    },
-    heroTitle : {
-      fontWeight: 'bold',
-      fontSize: 30
-    },
-    accountBubble : {
-      width: 55,
-      height: 55,
-      borderRadius: 100,
-      borderColor: 'black',
-      borderWidth: 8,
-    },
-    cameraContainer : {
-      flex: 1
-    },
-    cameraFlipButton : {
-      width: 75,
-      height: 75,
-      backgroundColor: "#dee5cf",
-      borderRadius: 100,
-      borderWidth: 7,
-      borderColor: 'Black',
-      justifyContent: 'center',
-      alignItems: 'center',
-      alignSelf: 'center',
-      position: 'absolute',
-      bottom: 65,
-      left: 30
-    },
-    cameraButtonContainer : {
-      flex: 1,
-      padding: 55,
-      paddingLeft: 30,
-      position: 'relative',
-    },
-    cameraShootButton : {
-      width: 120,
-      height: 120,
-      backgroundColor: "#dee5cf",
-      borderRadius: 100,
-      borderWidth: 7,
-      borderColor: 'Black',
-      justifyContent: 'center',
-      alignItems: 'center',
-      alignSelf: 'center',
-      position: 'absolute',
-      bottom: 50,
-    },
-    cameraFlashButton : {
-      width: 75,
-      height: 75,
-      backgroundColor: "#dee5cf",
-      borderRadius: 100,
-      borderWidth: 7,
-      borderColor: 'Black',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    questionContainer : {
-      flex: 1,
-      alignItems: 'center',
-      padding: 20
-    },
-    cameraButton : {
-      width: 125,
-      height: 125,
-      borderWidth: 10,
-      borderRadius: 150,
-      borderColor: 'black',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: 10,
-      backgroundColor: "#c8d7a2"
-    },
-    questionText : {
-      textAlign: "center",
-      fontSize: 24,
-      fontWeight: '600',
-      marginBottom: 25
-    },
-    questionImage : {
-      width: 300,
-      height: 300,
-      marginBottom: 35,
-      borderRadius: 20,
-      borderWidth: 7,
-      borderColor: 'black'
     }
 });

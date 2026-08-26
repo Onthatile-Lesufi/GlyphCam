@@ -4,17 +4,23 @@ import { router } from "expo-router";
 
 type LevelCardProps = {
     level: number;
+    progress: number;
 };
 
-export const LevelCard = ({ level }: LevelCardProps) => {
+export const LevelCard = ({ level, progress }: LevelCardProps) => {
     return (
         <View style={styles.cardContainer}>
-            <Pressable style={styles.cardPressable} onPress={() => router.replace({
-                pathname: "/question",
-                params: { languageLevel: level + 1 }
+            <Pressable 
+                style={({pressed}) => [
+                    styles.cardPressable,
+                    pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] }
+                ]} 
+                onPress={() => router.replace({
+                    pathname: "/question",
+                    params: { languageLevel: level  }
             })}>
-                <Text style={styles.cardText}>Level {level + 1}</Text>
-                <CircleProgress size={50} strokeWidth={10} key={level} colour="black" progress={10}/>
+                <Text style={styles.cardText}>Level {level }</Text>
+                <CircleProgress size={50} strokeWidth={10} key={level} colour="black" progress={progress}/>
             </Pressable>
         </View>
     );
