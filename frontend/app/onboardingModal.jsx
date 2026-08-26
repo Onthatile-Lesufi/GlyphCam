@@ -9,11 +9,11 @@ import { ThemedText } from '@/components/themed-text';
 export default function OnboardingModal() {
   return(
       <View style={styles.container}>
-            <ThemedText type="title" style={styles.languageHeading}>Welcome to Glyph</ThemedText>
+            <ThemedText type="title" style={styles.languageHeading}>Welcome to GlyphCam</ThemedText>
             <Text style={styles.buttonText}>
                 1. Choose a language{`\n`}{`\n`}
                 2. Choose a level{`\n`}{`\n`}
-                3. Learn start learning our suite of languages
+                3. Learn start learning from our suite of languages
             </Text>
             <Pressable style={styles.button} onPress={() => router.replace('/languageModal')}>
                 <Text style={styles.buttonText}>
